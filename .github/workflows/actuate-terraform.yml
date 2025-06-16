@@ -6,8 +6,6 @@ on:
     paths:
       - 'terraform/**'
 
-  workflow_dispatch:
-
 env:
   TF_WORKING_DIR: ./terraform/ec2-instance
 
