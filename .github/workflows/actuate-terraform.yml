@@ -4,12 +4,12 @@ on:
     branches:
       - main
     paths:
-      - 'Terraform/**'
+      - 'terraform/**'
 
   workflow_dispatch:
 
 env:
-  TF_WORKING_DIR: ./Terraform/ec2-instance
+  TF_WORKING_DIR: ./terraform/ec2-instance
 
 jobs:
   terraform:
