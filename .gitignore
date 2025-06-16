@@ -21,3 +21,14 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Terraform-specific files to ignore
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+.terraform/environment
+.terraform/modules
+.terraform/plugins
+.terraform/providers
+.terraform/terraform.tfstate

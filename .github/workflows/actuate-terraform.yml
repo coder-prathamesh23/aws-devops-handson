@@ -1,0 +1,71 @@
+name: Deploy EC2 app with Terraform
+on: 
+  push:
+    branches:
+      - main
+    paths:
+      - 'Terraform/**'
+
+  workflow_dispatch:
+
+env:
+  TF_WORKING_DIR: ./Terraform/ec2-instance
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+        
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.12.0
+
+      - name: Terraform Format Check
+        id: fmt
+        run: terraform fmt -check -recursive
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        continue-on-error: true
+
+      - name: Terraform Init
+        # Initializes a working directory containing Terraform configuration files
+        id: init
+        run: terraform init
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Validate
+        # Validates the Terraform configuration
+        id: validate
+        run: terraform validate
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Plan
+        # Generates an execution plan for Terraform changes
+        id: plan
+        run: terraform plan -no-color -input=false \
+             -var "aws_region=${{ vars.AWS_REGION }}" \
+             -var "key_pair_name=${{ vars.EC2_KEY_PAIR_NAME }}" \
+             -var "your_forked_repo_url=${{ vars.YOUR_FORKED_REPO_URL }}"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Apply
+        # Applies the planned changes to create/update infrastructure
+        id: apply
+        # This condition ensures `terraform apply` only runs on pushes to the 'main' branch.
+        # In a real-world scenario, you might have manual approval steps here for production.
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -auto-approve -input=false \
+             -var "aws_region=${{ vars.AWS_REGION }}" \
+             -var "key_pair_name=${{ vars.EC2_KEY_PAIR_NAME }}" \
+             -var "your_forked_repo_url=${{ vars.YOUR_FORKED_REPO_URL }}"
+        working-directory: ${{ env.TF_WORKING_DIR }}
