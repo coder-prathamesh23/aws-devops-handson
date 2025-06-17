@@ -5,6 +5,7 @@ on:
       - main
     paths:
       - 'terraform/**'
+  workflow_dispatch:
 
 env:
   TF_WORKING_DIR: ./terraform/ec2-instance
@@ -69,3 +70,56 @@ jobs:
              -var "key_pair_name=${{ vars.EC2_KEY_PAIR_NAME }}" \
              -var "your_forked_repo_url=${{ vars.YOUR_FORKED_REPO_URL }}"
         working-directory: ${{ env.TF_WORKING_DIR }}
+      
+      - name: Setup SSH Key for Ansible
+        # Create the .ssh directory and write the private key from GitHub Secrets
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ansible_key.pem
+          chmod 600 ~/.ssh/ansible_key.pem
+          echo "SSH key prepared."
+
+      - name: Install Ansible
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ansible python3-pip
+          pip3 install boto3 # boto3 is needed for dynamic inventory if you were using it, good general practice
+          echo "Ansible installed."
+
+      - name: Wait for EC2 Instance to be Ready (SSH)
+        # This is CRUCIAL. The instance needs time to boot and SSH service to start.
+        # This loop tries to connect every 10 seconds for up to 5 minutes.
+        run: |
+          HOST_IP=${{ steps.get_ip.outputs.EC2_PUBLIC_IP }}
+          MAX_RETRIES=30 # 30 retries * 10 seconds = 300 seconds (5 minutes)
+          RETRY_INTERVAL=10 # seconds
+
+          echo "Waiting for SSH on ${HOST_IP}..."
+          for i in $(seq 1 $MAX_RETRIES); do
+            ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i ~/.ssh/ansible_key.pem ec2-user@$HOST_IP exit 0
+            if [ $? -eq 0 ]; then
+              echo "SSH connection successful."
+              break
+            else
+              echo "Attempt $i/$MAX_RETRIES: SSH not ready. Retrying in $RETRY_INTERVAL seconds..."
+              sleep $RETRY_INTERVAL
+            fi
+            if [ $i -eq $MAX_RETRIES ]; then
+              echo "Max retries reached. SSH failed to connect."
+              exit 1
+            fi
+          done
+        env:
+          # Pass YOUR_FORKED_REPO_URL to the Ansible environment so it can be used in playbook vars
+          YOUR_FORKED_REPO_URL: ${{ vars.YOUR_FORKED_REPO_URL }}
+
+      - name: Run Ansible Playbook
+        # Execute the playbook against the dynamically created instance
+        run: |
+          ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook \
+            -i "${{ steps.get_ip.outputs.EC2_PUBLIC_IP }}," \
+            --private-key ~/.ssh/ansible_key.pem \
+            ansible/playbook.yml
+        env:
+          # Pass YOUR_FORKED_REPO_URL to the Ansible environment so it can be used in playbook vars
+          YOUR_FORKED_REPO_URL: ${{ vars.YOUR_FORKED_REPO_URL }}

@@ -1,0 +1,112 @@
+---
+- name: Deploy Crecita Node.js Application
+  hosts: all # This will be the dynamic IP provided by GitHub Actions
+  become: yes # Run tasks with sudo privileges
+  gather_facts: yes # Gather facts about the remote host
+
+  vars:
+    app_dir: /home/ec2-user # Directory to clone the app into
+    app_repo_url: "{{ lookup('env', 'https://github.com/coder-prathamesh23/aws-devops-handson') }}" # GitHub variable passed as env
+    node_version: "16" # Specify Node.js version. Adjust if your app needs a different one.
+
+  tasks:
+    - name: Ensure system is updated (yum for Amazon Linux)
+      yum:
+        name: "*"
+        state: latest
+        update_cache: yes
+      when: ansible_distribution == 'Amazon' # Apply for Amazon Linux
+      
+    - name: Ensure system is updated (apt for Ubuntu)
+      apt:
+        update_cache: yes
+        upgrade: dist
+      when: ansible_distribution == 'Ubuntu' # Apply for Ubuntu
+
+    - name: Install required packages for NodeSource (curl, gnupg, etc.)
+      yum:
+        name:
+          - curl
+          - git
+        state: present
+      when: ansible_distribution == 'Amazon'
+
+    - name: Install required packages for NodeSource (curl, gnupg, etc.)
+      apt:
+        name:
+          - curl
+          - git
+          - gnupg
+        state: present
+      when: ansible_distribution == 'Ubuntu'
+
+    - name: Add NodeSource Node.js {{ node_version }} repo (Amazon Linux)
+      shell: "curl -fsSL https://rpm.nodesource.com/setup_{{ node_version }}.x | bash -"
+      args:
+        creates: /etc/yum.repos.d/nodesource-nodejs.repo # Only run if repo not present
+      when: ansible_distribution == 'Amazon'
+
+    - name: Add NodeSource Node.js {{ node_version }} repo (Ubuntu)
+      shell: "curl -fsSL https://deb.nodesource.com/setup_{{ node_version }}.x | bash -"
+      args:
+        creates: /etc/apt/sources.list.d/nodesource.list # Only run if repo not present
+      when: ansible_distribution == 'Ubuntu'
+
+    - name: Install Node.js and npm
+      yum:
+        name: nodejs
+        state: present
+      when: ansible_distribution == 'Amazon'
+
+    - name: Install Node.js and npm
+      apt:
+        name: nodejs
+        state: present
+      when: ansible_distribution == 'Ubuntu'
+
+    - name: Clone Crecita app repository
+      git:
+        repo: "{{ app_repo_url }}"
+        dest: "{{ app_dir }}"
+        version: main # Or the branch you want to clone
+        force: yes # Force update if already exists
+      become_user: ec2-user # Run as ec2-user
+      args:
+        # Use SSH Agent for Git if SSH is needed, but HTTPS is safer for CI/CD
+        # key_file: /path/to/key # Not needed if repo_url is HTTPS
+      
+    - name: Install app dependencies
+      npm:
+        path: "{{ app_dir }}"
+        state: present
+      become_user: ec2-user
+
+    - name: Start Crecita app using PM2 (Process Manager)
+      # Installing PM2 globally for process management
+      npm:
+        name: pm2
+        global: yes
+        state: present
+      become_user: ec2-user
+
+    - name: Ensure app is running with PM2
+      command: pm2 start "{{ app_dir }}/server.js" --name "crecita-app" --
+      args:
+        chdir: "{{ app_dir }}" # Change directory to app_dir before running command
+        creates: /home/ec2-user/.pm2/pm2.log # Only start if not already running
+      become_user: ec2-user
+
+    - name: Save PM2 process list (for persistence across reboots)
+      command: pm2 save
+      become_user: ec2-user
+
+    - name: Set PM2 to start on boot
+      command: env PATH=$PATH:/usr/bin pm2 startup systemd -u ec2-user --hp /home/ec2-user
+      args:
+        creates: /etc/systemd/system/pm2-ec2-user.service # Only run if service not present
+      become: yes # This command might need root privileges
+
+    - name: Reload systemd daemon
+      command: systemctl daemon-reload
+      become: yes
+      when: ansible_changed_when_result is defined and ansible_changed_when_result # Only reload if PM2 startup script was created

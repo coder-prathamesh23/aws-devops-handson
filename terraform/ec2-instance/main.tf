@@ -74,28 +74,6 @@ resource "aws_instance" "crecita_app" {
               #!/bin/bash
               echo "Updating system..."
               yum update -y
-
-              echo "Installing Node.js 16..."
-              # Node.js 16 is chosen as it's a common LTS for older projects, adjust if your app needs a different version.
-              curl -fsSL https://rpm.nodesource.com/setup_16.x | bash -
-              yum install -y nodejs git
-
-              echo "Cloning Crecita app repository..."
-              # IMPORTANT: Use the HTTPS URL of *YOUR FORKED* repository
-              git clone ${var.your_forked_repo_url} /home/ec2-user/crecita-app
-              # Set ownership so the ec2-user can manage files
-              chown -R ec2-user:ec2-user /home/ec2-user/crecita-app
-
-              echo "Navigating to app directory and installing dependencies..."
-              cd /home/ec2-user/crecita-app
-              npm install
-
-              echo "Starting Crecita app..."
-              # Use nohup to keep the process running after the SSH session ends
-              # Redirect output to a log file for debugging
-              nohup npm start > /var/log/crecita-app.log 2>&1 &
-
-              echo "Crecita app setup complete."
               EOF
 
   tags = {
