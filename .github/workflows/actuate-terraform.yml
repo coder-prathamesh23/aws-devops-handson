@@ -70,6 +70,15 @@ jobs:
              -var "key_pair_name=${{ vars.EC2_KEY_PAIR_NAME }}" \
              -var "your_forked_repo_url=${{ vars.YOUR_FORKED_REPO_URL }}"
         working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Get EC2 Public IP
+        id: get_ip # Assigns an ID to this step so its outputs can be referenced
+        run: |
+          sleep 10 # Give AWS/Terraform a moment to ensure IP is assigned and state updated
+          EC2_PUBLIC_IP=$(terraform output -raw instance_public_ip)
+          echo "EC2_PUBLIC_IP=$EC2_PUBLIC_IP" >> $GITHUB_OUTPUT
+          echo "Debug: Public IP extracted by 'Get EC2 Public IP' step: $EC2_PUBLIC_IP"
+        working-directory: ${{ env.TF_WORKING_DIR }}
       
       - name: Setup SSH Key for Ansible
         # Create the .ssh directory and write the private key from GitHub Secrets
