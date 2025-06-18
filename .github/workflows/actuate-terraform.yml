@@ -64,7 +64,7 @@ jobs:
         id: apply
         # This condition ensures `terraform apply` only runs on pushes to the 'main' branch.
         # In a real-world scenario, you might have manual approval steps here for production.
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'workflow_dispatch'
         run: |
           terraform apply -auto-approve -input=false \
              -var "aws_region=${{ vars.AWS_REGION }}" \
@@ -73,12 +73,32 @@ jobs:
         working-directory: ${{ env.TF_WORKING_DIR }}
 
       - name: Get EC2 Public IP
-        id: get_ip # Assigns an ID to this step so its outputs can be referenced
+        id: get_ip
         run: |
           sleep 10 # Give AWS/Terraform a moment to ensure IP is assigned and state updated
-          EC2_PUBLIC_IP=$(terraform output -raw instance_public_ip)
+
+          # Command to get the public IP.
+          # 2>/dev/null redirects stderr (where the "No outputs found" warning goes) to null,
+          # preventing it from being captured by the variable assignment.
+          # -raw ensures only the value is returned, no newlines or other formatting.
+          # Removed '-state=terraform.tfstate' as it's not strictly necessary when 'working-directory' is set,
+          # and sometimes can cause issues if the runner's local state isn't exactly where it expects.
+          EC2_PUBLIC_IP=$(terraform output -raw instance_public_ip 2>/dev/null)
+
+          echo "Debug: Public IP extracted by 'Get EC2 Public IP' step (pre-check): '$EC2_PUBLIC_IP'"
+
+          # Check if the extracted IP is empty
+          if [ -z "$EC2_PUBLIC_IP" ]; then
+            echo "Error: Public IP could not be found in Terraform outputs."
+            echo "Please verify:"
+            echo "  1. 'terraform/ec2-instance/outputs.tf' contains 'output \"instance_public_ip\"'."
+            echo "  2. The 'Terraform Apply' step successfully created the EC2 instance and it has a public IP."
+            exit 1 # Exit with an error if IP is empty
+          fi
+
+          # If IP is found, make it available as an output for subsequent steps
           echo "EC2_PUBLIC_IP=$EC2_PUBLIC_IP" >> $GITHUB_OUTPUT
-          echo "Debug: Public IP extracted by 'Get EC2 Public IP' step: $EC2_PUBLIC_IP"
+          echo "Debug: Final Public IP made available to workflow: $EC2_PUBLIC_IP"
         working-directory: ${{ env.TF_WORKING_DIR }}
       
       - name: Setup SSH Key for Ansible
