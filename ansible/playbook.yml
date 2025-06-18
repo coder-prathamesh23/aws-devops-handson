@@ -1,4 +1,3 @@
-#This commented line was added while testing. You can remove it later.
 ---
 - name: Deploy Crecita Node.js Application
   hosts: all # This will be the dynamic IP provided by GitHub Actions
