@@ -5,6 +5,7 @@ on:
       - main
     paths:
       - 'terraform/**'
+      - 'ansible/**'
   workflow_dispatch:
 
 env:
